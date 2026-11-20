@@ -483,6 +483,9 @@ function renderRoute() {
 
 function init() {
   books = window.KOUYU_LIBRARY?.books || [];
+  const debugMode = new URLSearchParams(location.search).get("debug") === "1";
+  alignButton.hidden = !debugMode;
+  resetEstimateButton.hidden = !debugMode;
   window.addEventListener("hashchange", renderRoute);
   renderRoute();
 }
