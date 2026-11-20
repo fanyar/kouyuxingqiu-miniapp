@@ -104,17 +104,20 @@ a.icon-button {
   box-shadow: var(--shadow);
   padding: 18px;
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
-  grid-template-areas:
-    "badge name"
-    "badge meta";
-  column-gap: 14px;
   row-gap: 6px;
   text-align: left;
   text-decoration: none;
   color: inherit;
   cursor: pointer;
   transition: transform 0.18s ease, border-color 0.18s ease;
+}
+
+.chapter-card {
+  grid-template-columns: 42px minmax(0, 1fr);
+  grid-template-areas:
+    "badge name"
+    "badge meta";
+  column-gap: 14px;
 }
 
 .book-card:hover,
@@ -125,7 +128,6 @@ a.icon-button {
   border-color: var(--accent);
 }
 
-.book-card .chapter-badge,
 .chapter-card .chapter-badge {
   grid-area: badge;
   align-self: start;
@@ -144,12 +146,10 @@ a.icon-button {
 }
 
 .book-name {
-  grid-area: name;
   font-size: 18px;
   font-weight: 750;
 }
 
-.book-card .chapter-meta,
 .chapter-card .chapter-meta {
   grid-area: meta;
 }

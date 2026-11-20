@@ -5,7 +5,6 @@ const chapterGrid = document.getElementById("chapters");
 const reader = document.getElementById("reader");
 const backLink = document.getElementById("back-link");
 const contextLabel = document.getElementById("context-label");
-const bookLabel = document.getElementById("book-label");
 const bookTitle = document.getElementById("chapter-page-title");
 const readerLabel = document.getElementById("reader-label");
 const readerTitle = document.getElementById("reader-title");
@@ -136,10 +135,6 @@ function renderBooks() {
     card.href = `#/books/${encodeURIComponent(book.id)}`;
     card.setAttribute("aria-label", `打开${book.title}`);
 
-    const badge = document.createElement("span");
-    badge.className = "chapter-badge";
-    badge.textContent = String(book.level || book.label || "书");
-
     const name = document.createElement("span");
     name.className = "book-name";
     name.textContent = book.title;
@@ -151,7 +146,7 @@ function renderBooks() {
       ? `${book.chapters.length} 章节 · 上次 ${latest.chapter.letter} · ${formatTime(latest.progress.currentTime)}`
       : `${book.chapters.length} 章节`;
 
-    card.append(badge, name, meta);
+    card.append(name, meta);
     bookGrid.append(card);
   });
 }
@@ -455,7 +450,6 @@ function renderRoute() {
     backLink.href = "#/";
     backLink.setAttribute("aria-label", "返回书架");
     backLink.title = "返回书架";
-    bookLabel.textContent = book.label || "";
     bookTitle.textContent = book.title;
     renderChapterCards(book);
     return;
@@ -476,7 +470,7 @@ function renderRoute() {
   backLink.href = `#/books/${encodeURIComponent(book.id)}`;
   backLink.setAttribute("aria-label", "返回章节");
   backLink.title = "返回章节";
-  readerLabel.textContent = `${book.label || `Level ${book.level || 1}`} · ${chapter.letter}`;
+  readerLabel.textContent = `${book.title} · ${chapter.letter}`;
   readerTitle.textContent = chapter.title;
 
   const saved = readProgress(book, chapter);
