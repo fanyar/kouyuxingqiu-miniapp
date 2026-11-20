@@ -312,7 +312,6 @@ async function init() {
     return;
   }
   renderChapterCards();
-  openChapter(chapters[0].id);
 }
 
 init();
