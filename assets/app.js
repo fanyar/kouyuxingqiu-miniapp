@@ -169,7 +169,7 @@ function renderChapterCards(book) {
 
     const badge = document.createElement("span");
     badge.className = "chapter-badge";
-    badge.textContent = chapter.letter;
+    badge.textContent = chapter.id;
 
     const name = document.createElement("span");
     name.className = "chapter-name";
