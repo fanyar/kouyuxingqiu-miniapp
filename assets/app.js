@@ -10,8 +10,9 @@ const readerLabel = document.getElementById("reader-label");
 const readerTitle = document.getElementById("reader-title");
 const sentenceList = document.getElementById("sentences");
 const playButton = document.getElementById("play-button");
-const playIcon = document.getElementById("play-icon");
-const pauseIcon = document.getElementById("pause-icon");
+const pauseButton = document.getElementById("pause-button");
+const prevChapterButton = document.getElementById("prev-chapter");
+const nextChapterButton = document.getElementById("next-chapter");
 const rewindButton = document.getElementById("rewind-button");
 const progressInput = document.getElementById("progress");
 const currentTimeLabel = document.getElementById("current-time");
@@ -208,10 +209,8 @@ function renderSentences() {
 }
 
 function setPlayIcon(isPlaying) {
-  playIcon.hidden = isPlaying;
-  pauseIcon.hidden = !isPlaying;
-  playButton.setAttribute("aria-label", isPlaying ? "暂停" : "播放");
-  playButton.title = isPlaying ? "暂停" : "播放";
+  playButton.hidden = isPlaying;
+  pauseButton.hidden = !isPlaying;
 }
 
 function setActiveSentence(id) {
@@ -335,13 +334,38 @@ async function handleSentenceClick(sentence) {
 
 playButton.addEventListener("click", async () => {
   if (!currentChapter) return;
-  if (audio.paused) {
-    playbackIntent = { type: "chapter" };
-    await audio.play();
-  } else {
-    audio.pause();
-  }
+  playbackIntent = { type: "chapter" };
+  await audio.play();
 });
+
+pauseButton.addEventListener("click", () => {
+  if (!currentChapter) return;
+  audio.pause();
+});
+
+function chapterAt(offset) {
+  if (!currentBook || !currentChapter) return null;
+  const list = currentBook.chapters;
+  const index = list.findIndex((chapter) => chapter.id === currentChapter.id);
+  return index < 0 ? null : list[index + offset] || null;
+}
+
+function goToChapter(chapter) {
+  if (!chapter || !currentBook) return;
+  location.hash = `#/books/${encodeURIComponent(currentBook.id)}/chapters/${encodeURIComponent(chapter.id)}`;
+}
+
+function updateChapterNav() {
+  const previous = chapterAt(-1);
+  const next = chapterAt(1);
+  prevChapterButton.disabled = !previous;
+  nextChapterButton.disabled = !next;
+  prevChapterButton.title = previous ? `上一章：${previous.title}` : "已经是第一章";
+  nextChapterButton.title = next ? `下一章：${next.title}` : "已经是最后一章";
+}
+
+prevChapterButton.addEventListener("click", () => goToChapter(chapterAt(-1)));
+nextChapterButton.addEventListener("click", () => goToChapter(chapterAt(1)));
 
 rewindButton.addEventListener("click", () => {
   if (!currentChapter) return;
@@ -470,8 +494,9 @@ function renderRoute() {
   backLink.href = `#/books/${encodeURIComponent(book.id)}`;
   backLink.setAttribute("aria-label", "返回章节");
   backLink.title = "返回章节";
-  readerLabel.textContent = `${book.title} · ${chapter.letter}`;
+  readerLabel.textContent = `${book.title} · ${chapter.id}`;
   readerTitle.textContent = chapter.title;
+  updateChapterNav();
 
   const saved = readProgress(book, chapter);
   const startTime = saved?.currentTime || 0;
@@ -479,6 +504,10 @@ function renderRoute() {
   currentTimeLabel.textContent = formatTime(startTime);
   totalTimeLabel.textContent = formatTime(chapter.duration);
   progressInput.value = Math.round((startTime / chapter.duration) * 1000);
+  playbackIntent = { type: "chapter" };
+  audio.play().catch(() => {
+    // 浏览器可能阻止自动播放，此时保持暂停，用户可点击播放按钮
+  });
 }
 
 function init() {

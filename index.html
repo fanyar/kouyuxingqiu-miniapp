@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>口语星球 · 章节跟读</title>
-  <link rel="stylesheet" href="assets/styles.css?v=2026-11-20-3">
+  <link rel="stylesheet" href="assets/styles.css?v=2026-11-20-4">
 </head>
 <body>
   <div class="app-shell">
@@ -37,7 +37,11 @@
             <p class="lesson-label" id="reader-label"></p>
             <h1 id="reader-title"></h1>
           </div>
-          <button id="align-button" class="mode-button" type="button" aria-pressed="false" hidden>校准</button>
+          <div class="reader-tools">
+            <button id="prev-chapter" class="mode-button" type="button" title="上一章">← 上一章</button>
+            <button id="next-chapter" class="mode-button" type="button" title="下一章">下一章 →</button>
+            <button id="align-button" class="mode-button" type="button" aria-pressed="false" hidden>校准</button>
+          </div>
         </div>
 
         <ol id="sentences" class="sentence-list"></ol>
@@ -53,8 +57,10 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
             </button>
             <button id="play-button" class="primary-play" type="button" aria-label="播放" title="播放">
-              <svg id="play-icon" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
-              <svg id="pause-icon" viewBox="0 0 24 24" fill="currentColor" hidden><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></svg>
+              <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+            </button>
+            <button id="pause-button" class="primary-play" type="button" aria-label="暂停" title="暂停" hidden>
+              <svg viewBox="0 0 24 24" fill="currentColor"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></svg>
             </button>
             <button id="reset-estimate" class="icon-button" type="button" aria-label="恢复正式时间轴" title="恢复正式时间轴" hidden>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="m9 10 1.5 2.5L14 9"/></svg>
@@ -66,6 +72,6 @@
   </div>
 
   <script src="data/chapters.js?v=2026-11-20-2"></script>
-  <script src="assets/app.js?v=2026-11-20-5"></script>
+  <script src="assets/app.js?v=2026-11-20-6"></script>
 </body>
 </html>

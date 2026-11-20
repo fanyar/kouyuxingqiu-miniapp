@@ -174,7 +174,15 @@ a.icon-button {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 14px;
+}
+
+.reader-tools {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .lesson-label {
@@ -200,6 +208,11 @@ a.icon-button {
   border-color: var(--accent);
   background: var(--accent);
   color: white;
+}
+
+.mode-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .sentence-list {
