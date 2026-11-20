@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>口语星球 · 章节跟读</title>
+  <link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="app-header">
+      <button id="back-button" class="icon-button" type="button" aria-label="返回章节" title="返回章节" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+      </button>
+      <div class="brand">
+        <strong>口语星球</strong>
+        <span>读写一阶</span>
+      </div>
+    </header>
+
+    <main id="main">
+      <section id="chapter-list" aria-labelledby="list-title">
+        <h1 id="list-title">选择章节</h1>
+        <div id="chapters" class="chapter-grid"></div>
+      </section>
+
+      <section id="reader" hidden aria-labelledby="reader-title">
+        <div class="reader-head">
+          <div>
+            <p class="lesson-label" id="reader-label"></p>
+            <h1 id="reader-title"></h1>
+          </div>
+          <button id="align-button" class="mode-button" type="button" aria-pressed="false">校准</button>
+        </div>
+
+        <ol id="sentences" class="sentence-list"></ol>
+
+        <div class="player-dock">
+          <div class="progress-line">
+            <span id="current-time">0:00</span>
+            <input id="progress" type="range" min="0" max="1000" value="0" step="1" aria-label="播放进度">
+            <span id="total-time">0:00</span>
+          </div>
+          <div class="player-actions">
+            <button id="rewind-button" class="icon-button" type="button" aria-label="后退 5 秒" title="后退 5 秒">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+            </button>
+            <button id="play-button" class="primary-play" type="button" aria-label="播放" title="播放">
+              <svg id="play-icon" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+              <svg id="pause-icon" viewBox="0 0 24 24" fill="currentColor" hidden><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></svg>
+            </button>
+            <button id="reset-estimate" class="icon-button" type="button" aria-label="恢复估算时间" title="恢复估算时间">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="m9 10 1.5 2.5L14 9"/></svg>
+            </button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="data/chapters.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>
