@@ -51,6 +51,29 @@ afinfo audio/A1.mp3
 
 ### 章节数据
 
+`data/chapters.js` 使用书籍嵌套章节的结构：
+
+```js
+window.KOUYU_LIBRARY = {
+  books: [
+    {
+      id: "level1",
+      title: "读写一阶",
+      label: "Level 1",
+      chapters: []
+    }
+  ]
+};
+```
+
+新增章节时，把章节放进对应书籍的 `chapters` 数组。页面路由为：
+
+```text
+#/                                      书架
+#/books/{bookId}                        章节列表
+#/books/{bookId}/chapters/{chapterId}   章节详情
+```
+
 每个章节的数据结构：
 
 ```js
@@ -272,6 +295,6 @@ A1 验证点：
 5. 按 4 秒/2 秒重叠切块。
 6. 逐段本地语音识别。
 7. 合并词级时间并确定句边界。
-8. 写入 `data/chapters.js`。
+8. 写入对应书籍在 `data/chapters.js` 里的 `chapters` 数组。
 9. 更新 `timingVersion`。
 10. 完成播放高亮和点击朗读验证。

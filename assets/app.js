@@ -1,7 +1,12 @@
-const chapterList = document.getElementById("chapter-list");
+const libraryPage = document.getElementById("library-page");
+const bookGrid = document.getElementById("books");
+const chapterPage = document.getElementById("chapter-page");
 const chapterGrid = document.getElementById("chapters");
 const reader = document.getElementById("reader");
-const backButton = document.getElementById("back-button");
+const backLink = document.getElementById("back-link");
+const contextLabel = document.getElementById("context-label");
+const bookLabel = document.getElementById("book-label");
+const bookTitle = document.getElementById("chapter-page-title");
 const readerLabel = document.getElementById("reader-label");
 const readerTitle = document.getElementById("reader-title");
 const sentenceList = document.getElementById("sentences");
@@ -15,7 +20,8 @@ const totalTimeLabel = document.getElementById("total-time");
 const alignButton = document.getElementById("align-button");
 const resetEstimateButton = document.getElementById("reset-estimate");
 
-let chapters = [];
+let books = [];
+let currentBook = null;
 let currentChapter = null;
 let audio = null;
 let sentenceTimes = [];
@@ -24,18 +30,57 @@ let playbackIntent = null;
 let pendingSeek = null;
 let alignMode = false;
 let progressSaveTime = 0;
-
-function storageKey(id) {
-  return `kouyu-progress-${id}`;
-}
-
-function overridesKey(id) {
-  return `kouyu-times-${id}-${currentChapter?.timingVersion || "default"}`;
-}
+let audioSession = 0;
 
 function formatTime(seconds) {
   const safe = Math.max(0, Math.floor(seconds || 0));
   return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, "0")}`;
+}
+
+function parseJSON(key) {
+  try {
+    return JSON.parse(localStorage.getItem(key));
+  } catch {
+    return null;
+  }
+}
+
+function progressKey(book, chapter) {
+  return `kouyu-progress-${book.id}-${chapter.id}`;
+}
+
+function overridesKey(book, chapter) {
+  return `kouyu-times-${book.id}-${chapter.id}-${chapter.timingVersion}`;
+}
+
+function readProgress(book, chapter) {
+  const saved = parseJSON(progressKey(book, chapter));
+  if (saved) return saved;
+
+  if (book.id === "level1") {
+    return parseJSON(`kouyu-progress-${chapter.id}`);
+  }
+  return null;
+}
+
+function saveProgress(book, chapter, currentTime, extra = {}) {
+  const previous = readProgress(book, chapter) || {};
+  localStorage.setItem(progressKey(book, chapter), JSON.stringify({
+    ...previous,
+    ...extra,
+    currentTime,
+    updatedAt: Date.now()
+  }));
+}
+
+function loadSavedTimes(book, chapter) {
+  const saved = parseJSON(overridesKey(book, chapter));
+  if (saved) return saved;
+
+  if (book.id === "level1") {
+    return parseJSON(`kouyu-times-${chapter.id}-${chapter.timingVersion}`) || {};
+  }
+  return {};
 }
 
 function parseMarkedText(text) {
@@ -55,17 +100,9 @@ function parseMarkedText(text) {
   return fragment;
 }
 
-function loadSavedTimes(chapter) {
-  try {
-    return JSON.parse(localStorage.getItem(overridesKey(chapter.id))) || {};
-  } catch {
-    return {};
-  }
-}
-
-function applyTimes(chapter) {
+function applyTimes(book, chapter) {
   currentChapter = chapter;
-  const saved = loadSavedTimes(chapter);
+  const saved = loadSavedTimes(book, chapter);
   sentenceTimes = chapter.sentences.map((sentence) => ({
     ...sentence,
     start: saved[sentence.id]?.start ?? sentence.start,
@@ -73,38 +110,85 @@ function applyTimes(chapter) {
   }));
 }
 
-function applyPendingSeek() {
-  if (!audio || pendingSeek == null || audio.readyState < 1) return;
-  const seekableEnd = audio.seekable.length ? audio.seekable.end(audio.seekable.length - 1) : 0;
-  if (seekableEnd < pendingSeek) return;
-  audio.currentTime = pendingSeek;
-  pendingSeek = null;
+function latestChapterProgress(book) {
+  return book.chapters.reduce((latest, chapter) => {
+    const progress = readProgress(book, chapter);
+    if (!progress?.updatedAt) return latest;
+    if (!latest || progress.updatedAt > latest.progress.updatedAt) {
+      return { chapter, progress };
+    }
+    return latest;
+  }, null);
 }
 
-function saveTimes(chapter) {
-  const saved = {};
-  sentenceTimes.forEach(({ id, start, end }) => {
-    saved[id] = { start, end };
+function renderBooks() {
+  bookGrid.replaceChildren();
+  if (!books.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "还没有书籍文件。";
+    bookGrid.append(empty);
+    return;
+  }
+  books.forEach((book) => {
+    const card = document.createElement("a");
+    card.className = "book-card";
+    card.href = `#/books/${encodeURIComponent(book.id)}`;
+    card.setAttribute("aria-label", `打开${book.title}`);
+
+    const badge = document.createElement("span");
+    badge.className = "chapter-badge";
+    badge.textContent = String(book.level || book.label || "书");
+
+    const name = document.createElement("span");
+    name.className = "book-name";
+    name.textContent = book.title;
+
+    const meta = document.createElement("span");
+    meta.className = "chapter-meta";
+    const latest = latestChapterProgress(book);
+    meta.textContent = latest
+      ? `${book.chapters.length} 章节 · 上次 ${latest.chapter.letter} · ${formatTime(latest.progress.currentTime)}`
+      : `${book.chapters.length} 章节`;
+
+    card.append(badge, name, meta);
+    bookGrid.append(card);
   });
-  localStorage.setItem(overridesKey(chapter.id), JSON.stringify(saved));
 }
 
-function renderChapterCards() {
+function renderChapterCards(book) {
   chapterGrid.replaceChildren();
-  chapters.forEach((chapter) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "chapter-card";
-    const saved = JSON.parse(localStorage.getItem(storageKey(chapter.id)) || "null");
-    button.innerHTML = `
-      <span class="chapter-badge">${chapter.letter}</span>
-      <span class="chapter-name">${chapter.title}</span>
-      <span class="chapter-meta">${chapter.sentences.length} 句 · ${formatTime(chapter.duration)}${
-        saved ? ` · 上次 ${formatTime(saved.currentTime)}` : ""
-      }</span>
-    `;
-    button.addEventListener("click", () => openChapter(chapter.id));
-    chapterGrid.append(button);
+  if (!book.chapters.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "这本书还没有章节。";
+    chapterGrid.append(empty);
+    return;
+  }
+
+  book.chapters.forEach((chapter) => {
+    const card = document.createElement("a");
+    card.className = "chapter-card";
+    card.href = `#/books/${encodeURIComponent(book.id)}/chapters/${encodeURIComponent(chapter.id)}`;
+    card.setAttribute("aria-label", `打开章节 ${chapter.title}`);
+
+    const badge = document.createElement("span");
+    badge.className = "chapter-badge";
+    badge.textContent = chapter.letter;
+
+    const name = document.createElement("span");
+    name.className = "chapter-name";
+    name.textContent = chapter.title;
+
+    const meta = document.createElement("span");
+    meta.className = "chapter-meta";
+    const saved = readProgress(book, chapter);
+    meta.textContent = `${chapter.sentences.length} 句 · ${formatTime(chapter.duration)}${
+      saved ? ` · 上次 ${formatTime(saved.currentTime)}` : ""
+    }`;
+
+    card.append(badge, name, meta);
+    chapterGrid.append(card);
   });
 }
 
@@ -151,7 +235,8 @@ function sentenceAt(time) {
   return sentenceTimes.find(({ start, end }) => time >= start && time < end);
 }
 
-function updateCurrentTime() {
+function updateCurrentTime(event) {
+  if (!currentBook || !currentChapter || !audio || event.target !== audio) return;
   const time = audio.currentTime;
   currentTimeLabel.textContent = formatTime(time);
   progressInput.value = Math.round((time / (audio.duration || currentChapter.duration)) * 1000);
@@ -167,36 +252,51 @@ function updateCurrentTime() {
 
   if (time - progressSaveTime > 1 || time < progressSaveTime) {
     progressSaveTime = time;
-    localStorage.setItem(storageKey(currentChapter.id), JSON.stringify({
-      currentTime: time,
-      updatedAt: Date.now()
-    }));
+    saveProgress(currentBook, currentChapter, time);
   }
 }
 
-function configureAudio(chapter, startTime = 0) {
+function applyPendingSeek() {
+  if (!audio || pendingSeek == null || audio.readyState < 1) return;
+  const seekableEnd = audio.seekable.length ? audio.seekable.end(audio.seekable.length - 1) : 0;
+  if (seekableEnd < pendingSeek) return;
+  audio.currentTime = pendingSeek;
+  pendingSeek = null;
+}
+
+function configureAudio(book, chapter, startTime = 0) {
   audio?.pause();
+  const session = ++audioSession;
   audio = new Audio(chapter.audio);
   audio.preload = "metadata";
   playbackIntent = null;
   pendingSeek = startTime > 0 ? startTime : null;
 
   audio.addEventListener("loadedmetadata", () => {
+    if (session !== audioSession || currentChapter !== chapter) return;
     totalTimeLabel.textContent = formatTime(audio.duration || chapter.duration);
     applyPendingSeek();
   });
-  audio.addEventListener("canplay", applyPendingSeek);
-  audio.addEventListener("canplaythrough", applyPendingSeek);
-  audio.addEventListener("progress", applyPendingSeek);
+  audio.addEventListener("canplay", () => {
+    if (session === audioSession) applyPendingSeek();
+  });
+  audio.addEventListener("canplaythrough", () => {
+    if (session === audioSession) applyPendingSeek();
+  });
+  audio.addEventListener("progress", () => {
+    if (session === audioSession) applyPendingSeek();
+  });
   audio.addEventListener("timeupdate", updateCurrentTime);
-  audio.addEventListener("play", () => setPlayIcon(true));
-  audio.addEventListener("pause", () => setPlayIcon(false));
+  audio.addEventListener("play", () => {
+    if (session === audioSession) setPlayIcon(true);
+  });
+  audio.addEventListener("pause", () => {
+    if (session === audioSession) setPlayIcon(false);
+  });
   audio.addEventListener("ended", () => {
+    if (session !== audioSession || currentChapter !== chapter) return;
     setPlayIcon(false);
-    localStorage.setItem(storageKey(chapter.id), JSON.stringify({
-      currentTime: 0,
-      updatedAt: Date.now()
-    }));
+    saveProgress(book, chapter, 0, { completed: true });
   });
 }
 
@@ -206,39 +306,12 @@ function seekTo(time) {
   applyPendingSeek();
 }
 
-function openChapter(id) {
-  const chapter = chapters.find((item) => item.id === id);
-  if (!chapter) return;
-
-  currentChapter = chapter;
-  applyTimes(chapter);
-  renderSentences();
-  readerLabel.textContent = `Level 1 · ${chapter.letter}`;
-  readerTitle.textContent = chapter.title;
-  chapterList.hidden = true;
-  reader.hidden = false;
-  backButton.hidden = false;
-  window.scrollTo({ top: 0 });
-
-  let startTime = 0;
-  try {
-    startTime = JSON.parse(localStorage.getItem(storageKey(id)))?.currentTime || 0;
-  } catch {
-    startTime = 0;
-  }
-  configureAudio(chapter, startTime);
-  currentTimeLabel.textContent = formatTime(startTime);
-  totalTimeLabel.textContent = formatTime(chapter.duration);
-  progressInput.value = Math.round((startTime / chapter.duration) * 1000);
-}
-
-function closeChapter() {
-  audio?.pause();
-  chapterList.hidden = false;
-  reader.hidden = true;
-  backButton.hidden = true;
-  currentChapter = null;
-  renderChapterCards();
+function saveTimes(book, chapter) {
+  const saved = {};
+  sentenceTimes.forEach(({ id, start, end }) => {
+    saved[id] = { start, end };
+  });
+  localStorage.setItem(overridesKey(book, chapter), JSON.stringify(saved));
 }
 
 async function handleSentenceClick(sentence) {
@@ -250,7 +323,7 @@ async function handleSentenceClick(sentence) {
     if (previous) previous.end = Math.max(previous.start + 0.3, markTime - 0.12);
     const next = sentenceTimes[index + 1];
     if (!next) sentenceTimes[index].end = Math.min(markTime + 4, currentChapter.duration);
-    saveTimes(currentChapter);
+    saveTimes(currentBook, currentChapter);
     setActiveSentence(sentence.id);
     return;
   }
@@ -296,22 +369,128 @@ alignButton.addEventListener("click", () => {
 });
 
 resetEstimateButton.addEventListener("click", () => {
-  if (!currentChapter) return;
-  localStorage.removeItem(overridesKey(currentChapter.id));
-  applyTimes(currentChapter);
+  if (!currentBook || !currentChapter) return;
+  localStorage.removeItem(overridesKey(currentBook, currentChapter));
+  applyTimes(currentBook, currentChapter);
   renderSentences();
 });
 
-backButton.addEventListener("click", closeChapter);
+function showPage(page) {
+  libraryPage.hidden = page !== "library";
+  chapterPage.hidden = page !== "chapters";
+  reader.hidden = page !== "reader";
+}
 
-async function init() {
-  const data = window.KOUYU_CHAPTERS;
-  chapters = data.chapters;
-  if (!chapters.length) {
-    chapterGrid.innerHTML = '<p class="empty-state">还没有章节文件。</p>';
+function resetReaderState() {
+  audioSession += 1;
+  currentBook = null;
+  currentChapter = null;
+  if (audio) {
+    audio.pause();
+    audio.removeAttribute("src");
+    audio.load();
+  }
+  audio = null;
+  sentenceTimes = [];
+  activeSentenceId = null;
+  playbackIntent = null;
+  pendingSeek = null;
+  alignMode = false;
+  alignButton.setAttribute("aria-pressed", "false");
+  sentenceList.replaceChildren();
+  setPlayIcon(false);
+}
+
+function parseRoute() {
+  const path = location.hash.replace(/^#/, "");
+  if (!path || path === "/") return { page: "library" };
+
+  const parts = path.split("/").filter(Boolean).map(decodeURIComponent);
+  if (parts.length === 2 && parts[0] === "books") {
+    return { page: "chapters", bookId: parts[1] };
+  }
+  if (
+    parts.length === 4 &&
+    parts[0] === "books" &&
+    parts[2] === "chapters"
+  ) {
+    return { page: "reader", bookId: parts[1], chapterId: parts[3] };
+  }
+  return null;
+}
+
+function replaceWithLibrary() {
+  location.replace("#/");
+}
+
+function renderRoute() {
+  const route = parseRoute();
+  if (!route) {
+    replaceWithLibrary();
     return;
   }
-  renderChapterCards();
+
+  resetReaderState();
+  window.scrollTo({ top: 0 });
+
+  if (route.page === "library") {
+    showPage("library");
+    contextLabel.textContent = "书架";
+    backLink.hidden = true;
+    renderBooks();
+    return;
+  }
+
+  const book = books.find(({ id }) => id === route.bookId);
+  if (!book) {
+    replaceWithLibrary();
+    return;
+  }
+  currentBook = book;
+
+  if (route.page === "chapters") {
+    showPage("chapters");
+    contextLabel.textContent = "章节";
+    backLink.hidden = false;
+    backLink.href = "#/";
+    backLink.setAttribute("aria-label", "返回书架");
+    backLink.title = "返回书架";
+    bookLabel.textContent = book.label || "";
+    bookTitle.textContent = book.title;
+    renderChapterCards(book);
+    return;
+  }
+
+  const chapter = book.chapters.find(({ id }) => id === route.chapterId);
+  if (!chapter) {
+    location.replace(`#/books/${encodeURIComponent(book.id)}`);
+    return;
+  }
+
+  currentChapter = chapter;
+  applyTimes(book, chapter);
+  renderSentences();
+  showPage("reader");
+  contextLabel.textContent = "跟读";
+  backLink.hidden = false;
+  backLink.href = `#/books/${encodeURIComponent(book.id)}`;
+  backLink.setAttribute("aria-label", "返回章节");
+  backLink.title = "返回章节";
+  readerLabel.textContent = `${book.label || `Level ${book.level || 1}`} · ${chapter.letter}`;
+  readerTitle.textContent = chapter.title;
+
+  const saved = readProgress(book, chapter);
+  const startTime = saved?.currentTime || 0;
+  configureAudio(book, chapter, startTime);
+  currentTimeLabel.textContent = formatTime(startTime);
+  totalTimeLabel.textContent = formatTime(chapter.duration);
+  progressInput.value = Math.round((startTime / chapter.duration) * 1000);
+}
+
+function init() {
+  books = window.KOUYU_LIBRARY?.books || [];
+  window.addEventListener("hashchange", renderRoute);
+  renderRoute();
 }
 
 init();
