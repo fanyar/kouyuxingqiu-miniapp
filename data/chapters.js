@@ -2,7 +2,7 @@ window.KOUYU_LIBRARY = {
   books: [
     {
       id: "level1",
-      title: "读写一阶",
+      title: "口语星球 1",
       label: "Level 1",
       chapters: [
         {
