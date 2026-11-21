@@ -31,6 +31,15 @@ let pendingSeek = null;
 let alignMode = false;
 let progressSaveTime = 0;
 let audioSession = 0;
+let playbackWatcher = 0;
+let audioObjectUrl = null;
+
+const SPEECH_HIGHLIGHT_DELAY = 0.16;
+const NATURAL_SPEECH_GAP_MAX = 1.5;
+const SKIPPED_GAP_PAUSE = 1;
+const CHAPTER_INTRO_MAX_NATURAL_GAP = 2;
+const CHAPTER_INTRO_SKIP_AT = 1.8;
+const PLAYBACK_WATCH_INTERVAL = 50;
 
 function formatTime(seconds) {
   const safe = Math.max(0, Math.floor(seconds || 0));
@@ -65,9 +74,10 @@ function readProgress(book, chapter) {
 
 function saveProgress(book, chapter, currentTime, extra = {}) {
   const previous = readProgress(book, chapter) || {};
+  const completed = extra.completed ?? false;
   localStorage.setItem(progressKey(book, chapter), JSON.stringify({
     ...previous,
-    ...extra,
+    completed,
     currentTime,
     updatedAt: Date.now()
   }));
@@ -121,6 +131,22 @@ function latestChapterProgress(book) {
   }, null);
 }
 
+function resumeChapterProgress(book) {
+  const latest = latestChapterProgress(book);
+  if (!latest) return null;
+
+  if (!latest.progress.completed) {
+    return { chapter: latest.chapter, label: "上次读到" };
+  }
+
+  const index = book.chapters.findIndex(({ id }) => id === latest.chapter.id);
+  const next = index >= 0 ? book.chapters[index + 1] : null;
+  return {
+    chapter: next || latest.chapter,
+    label: next ? "从这里开始读" : "已读完"
+  };
+}
+
 function renderBooks() {
   bookGrid.replaceChildren();
   if (!books.length) {
@@ -142,9 +168,9 @@ function renderBooks() {
 
     const meta = document.createElement("span");
     meta.className = "chapter-meta";
-    const latest = latestChapterProgress(book);
-    meta.textContent = latest
-      ? `${book.chapters.length} 章节 · 上次 ${latest.chapter.letter} · ${formatTime(latest.progress.currentTime)}`
+    const resume = resumeChapterProgress(book);
+    meta.textContent = resume
+      ? `${book.chapters.length} 章节 · 继续 ${resume.chapter.id}`
       : `${book.chapters.length} 章节`;
 
     card.append(name, meta);
@@ -162,6 +188,7 @@ function renderChapterCards(book) {
     return;
   }
 
+  const resume = resumeChapterProgress(book);
   book.chapters.forEach((chapter) => {
     const card = document.createElement("a");
     card.className = "chapter-card";
@@ -175,6 +202,15 @@ function renderChapterCards(book) {
     const name = document.createElement("span");
     name.className = "chapter-name";
     name.textContent = chapter.title;
+
+    if (resume?.chapter.id === chapter.id) {
+      const chip = document.createElement("span");
+      chip.className = "chapter-resume";
+      chip.textContent = resume.label;
+      card.classList.add("is-resume");
+      card.setAttribute("aria-label", `${resume.label}：${chapter.title}`);
+      card.append(chip);
+    }
 
     const meta = document.createElement("span");
     meta.className = "chapter-meta";
@@ -225,47 +261,100 @@ function setActiveSentence(id) {
   });
 }
 
-function sentenceAt(time) {
-  return sentenceTimes.find(({ start, end }) => time >= start && time < end);
+function sentenceAt(time, useHighlightDelay = true) {
+  const delay = useHighlightDelay ? SPEECH_HIGHLIGHT_DELAY : 0;
+  return sentenceTimes.find(({ start, end }) => (
+    time >= start + delay && time < end
+  ));
 }
 
-function updateCurrentTime(event) {
-  if (!currentBook || !currentChapter || !audio || event.target !== audio) return;
-  const time = audio.currentTime;
+function syncActiveSentence(time) {
+  if (alignMode) return;
+  if (playbackIntent?.type !== "chapter" && playbackIntent?.type !== "sentence") return;
+
+  const sentence = sentenceAt(time);
+  const isSentenceTarget = playbackIntent?.type !== "sentence" || sentence?.id === playbackIntent.id;
+  setActiveSentence(sentence && isSentenceTarget ? sentence.id : null);
+}
+
+function maybeSkipSentenceGap(time) {
+  if (playbackIntent?.type !== "chapter" || !audio || audio.paused || alignMode) return;
+  if (sentenceAt(time, false)) return;
+
+  let previous = null;
+  let next = null;
+  for (const sentence of sentenceTimes) {
+    if (sentence.end <= time) previous = sentence;
+    if (!next && sentence.start > time) next = sentence;
+  }
+
+  if (!previous && next) {
+    if (next.start > CHAPTER_INTRO_MAX_NATURAL_GAP && time >= CHAPTER_INTRO_SKIP_AT) {
+      seekTo(next.start);
+    }
+    return;
+  }
+  if (!previous || !next) return;
+
+  const naturalGap = next.start - previous.end;
+  if (naturalGap <= NATURAL_SPEECH_GAP_MAX) return;
+  if (time < previous.end + SKIPPED_GAP_PAUSE) return;
+  seekTo(next.start);
+}
+
+function updatePlaybackState(time) {
   currentTimeLabel.textContent = formatTime(time);
   progressInput.value = Math.round((time / (audio.duration || currentChapter.duration)) * 1000);
 
-  if (!alignMode && (!playbackIntent || playbackIntent.type === "chapter")) {
-    const sentence = sentenceAt(time);
-    setActiveSentence(sentence?.id ?? null);
-  }
-
-  if (playbackIntent?.type === "sentence" && time >= playbackIntent.end) {
-    audio.pause();
-  }
+  syncActiveSentence(time);
+  maybeSkipSentenceGap(time);
 
   if (time - progressSaveTime > 1 || time < progressSaveTime) {
     progressSaveTime = time;
     saveProgress(currentBook, currentChapter, time);
   }
+
+  if (playbackIntent?.type === "sentence" && time >= playbackIntent.end) {
+    audio.pause();
+    playbackIntent = null;
+    setActiveSentence(null);
+  }
+}
+
+function updateCurrentTime(event) {
+  if (!currentBook || !currentChapter || !audio || event.target !== audio) return;
+  updatePlaybackState(audio.currentTime);
 }
 
 function applyPendingSeek() {
   if (!audio || pendingSeek == null || audio.readyState < 1) return;
-  const seekableEnd = audio.seekable.length ? audio.seekable.end(audio.seekable.length - 1) : 0;
-  if (seekableEnd < pendingSeek) return;
   audio.currentTime = pendingSeek;
   pendingSeek = null;
 }
 
-function configureAudio(book, chapter, startTime = 0) {
+async function configureAudio(book, chapter, startTime = 0) {
+  stopPlaybackWatcher();
   audio?.pause();
   const session = ++audioSession;
-  audio = new Audio(chapter.audio);
-  audio.preload = "metadata";
+  audio = new Audio();
+  audio.preload = "auto";
   playbackIntent = null;
   pendingSeek = startTime > 0 ? startTime : null;
 
+  try {
+    const response = await fetch(chapter.audio, { cache: "force-cache" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const blob = await response.blob();
+    if (session !== audioSession) return;
+    if (audioObjectUrl) URL.revokeObjectURL(audioObjectUrl);
+    audioObjectUrl = URL.createObjectURL(blob);
+    audio.src = audioObjectUrl;
+  } catch {
+    if (session !== audioSession) return;
+    audio.src = chapter.audio;
+  }
+  if (session !== audioSession) return;
+  audio.load();
   audio.addEventListener("loadedmetadata", () => {
     if (session !== audioSession || currentChapter !== chapter) return;
     totalTimeLabel.textContent = formatTime(audio.duration || chapter.duration);
@@ -282,16 +371,41 @@ function configureAudio(book, chapter, startTime = 0) {
   });
   audio.addEventListener("timeupdate", updateCurrentTime);
   audio.addEventListener("play", () => {
-    if (session === audioSession) setPlayIcon(true);
+    if (session === audioSession) {
+      setPlayIcon(true);
+      startPlaybackWatcher();
+    }
   });
   audio.addEventListener("pause", () => {
-    if (session === audioSession) setPlayIcon(false);
+    if (session === audioSession) {
+      setPlayIcon(false);
+      stopPlaybackWatcher();
+      if (playbackIntent?.type === "sentence") setActiveSentence(null);
+    }
   });
   audio.addEventListener("ended", () => {
     if (session !== audioSession || currentChapter !== chapter) return;
     setPlayIcon(false);
     saveProgress(book, chapter, 0, { completed: true });
   });
+}
+
+function stopPlaybackWatcher() {
+  if (!playbackWatcher) return;
+  clearInterval(playbackWatcher);
+  playbackWatcher = 0;
+}
+
+function startPlaybackWatcher() {
+  stopPlaybackWatcher();
+  const session = audioSession;
+  playbackWatcher = setInterval(() => {
+    if (session !== audioSession || !audio || audio.paused) {
+      stopPlaybackWatcher();
+      return;
+    }
+    updatePlaybackState(audio.currentTime);
+  }, PLAYBACK_WATCH_INTERVAL);
 }
 
 function seekTo(time) {
@@ -322,13 +436,13 @@ async function handleSentenceClick(sentence) {
     return;
   }
 
-  const startTime = Math.max(0, sentence.start - 0.08);
+  const startTime = Math.max(0, sentence.start);
   seekTo(startTime);
   playbackIntent = {
     type: "sentence",
+    id: sentence.id,
     end: sentence.end + 0.18
   };
-  setActiveSentence(sentence.id);
   await audio.play();
 }
 
@@ -341,6 +455,38 @@ playButton.addEventListener("click", async () => {
 pauseButton.addEventListener("click", () => {
   if (!currentChapter) return;
   audio.pause();
+});
+
+async function togglePlayPause() {
+  if (!currentChapter || !audio) return;
+
+  if (audio.paused) {
+    if (audio.ended || audio.currentTime >= audio.duration - 0.05) {
+      playbackIntent = { type: "chapter" };
+      seekTo(0);
+    } else if (!playbackIntent) {
+      playbackIntent = { type: "chapter" };
+    }
+    await audio.play().catch(() => {});
+    return;
+  }
+
+  audio.pause();
+}
+
+document.addEventListener("keydown", (event) => {
+  if (
+    event.code !== "Space" ||
+    event.repeat ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.altKey ||
+    event.shiftKey ||
+    reader.hidden
+  ) return;
+
+  event.preventDefault();
+  void togglePlayPause();
 });
 
 function chapterAt(offset) {
@@ -409,12 +555,17 @@ function resetReaderState() {
     audio.removeAttribute("src");
     audio.load();
   }
+  if (audioObjectUrl) {
+    URL.revokeObjectURL(audioObjectUrl);
+    audioObjectUrl = null;
+  }
   audio = null;
   sentenceTimes = [];
   activeSentenceId = null;
   playbackIntent = null;
   pendingSeek = null;
   alignMode = false;
+  stopPlaybackWatcher();
   alignButton.setAttribute("aria-pressed", "false");
   sentenceList.replaceChildren();
   setPlayIcon(false);
@@ -442,7 +593,7 @@ function replaceWithLibrary() {
   location.replace("#/");
 }
 
-function renderRoute() {
+async function renderRoute() {
   const route = parseRoute();
   if (!route) {
     replaceWithLibrary();
@@ -498,9 +649,9 @@ function renderRoute() {
   readerTitle.textContent = chapter.title;
   updateChapterNav();
 
-  const saved = readProgress(book, chapter);
-  const startTime = saved?.currentTime || 0;
-  configureAudio(book, chapter, startTime);
+  // 章节从原始音频开头播放；过长的前奏由播放调度在约 2 秒时跳过。
+  const startTime = 0;
+  await configureAudio(book, chapter, startTime);
   currentTimeLabel.textContent = formatTime(startTime);
   totalTimeLabel.textContent = formatTime(chapter.duration);
   progressInput.value = Math.round((startTime / chapter.duration) * 1000);

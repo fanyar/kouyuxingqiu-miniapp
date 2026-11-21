@@ -113,19 +113,24 @@ a.icon-button {
 }
 
 .chapter-card {
-  grid-template-columns: 42px minmax(0, 1fr);
+  grid-template-columns: 42px minmax(0, 1fr) auto;
   grid-template-areas:
-    "badge name"
-    "badge meta";
+    "badge name marker"
+    "badge meta meta";
   column-gap: 14px;
 }
 
 .book-card:hover,
 .book-card:focus-visible,
+.chapter-card.is-resume,
 .chapter-card:hover,
 .chapter-card:focus-visible {
   transform: translateY(-2px);
   border-color: var(--accent);
+}
+
+.chapter-card.is-resume {
+  box-shadow: 0 0 0 2px rgba(210, 55, 63, 0.12), var(--shadow);
 }
 
 .chapter-card .chapter-badge {
@@ -158,6 +163,20 @@ a.icon-button {
   grid-area: name;
   font-size: 17px;
   font-weight: 700;
+}
+
+.chapter-resume {
+  grid-area: marker;
+  align-self: start;
+  justify-self: end;
+  border-radius: 6px;
+  padding: 4px 8px;
+  background: var(--accent);
+  color: white;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .chapter-list {
@@ -371,5 +390,17 @@ a.icon-button {
   .sentence {
     padding: 16px 6px;
     gap: 10px;
+  }
+
+  .chapter-card {
+    grid-template-columns: 42px minmax(0, 1fr);
+    grid-template-areas:
+      "badge name"
+      "badge meta"
+      "marker marker";
+  }
+
+  .chapter-resume {
+    justify-self: start;
   }
 }
